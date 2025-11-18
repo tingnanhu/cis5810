@@ -4,6 +4,11 @@ Test script for adding stickers to images using MediaPipe
 import cv2
 import argparse
 import os
+import sys
+from pathlib import Path
+
+# Add parent directory to path to import sticker_overlay
+sys.path.insert(0, str(Path(__file__).parent.parent))
 from sticker_overlay import MediaPipeStickerOverlay, StickerPosition
 
 
@@ -16,7 +21,6 @@ def load_sticker(sticker_path: str):
     if sticker is None:
         raise ValueError(f"Could not load sticker from: {sticker_path}")
     
-    # If no alpha channel, add one
     if sticker.shape[2] == 3:
         alpha = np.ones((sticker.shape[0], sticker.shape[1], 1), 
                        dtype=sticker.dtype) * 255
@@ -47,15 +51,15 @@ def main():
                        help='Minimum confidence for face detection (0.0-1.0)')
     parser.add_argument('--min-tracking-confidence', type=float, default=0.5,
                        help='Minimum confidence for face tracking (0.0-1.0)')
+    parser.add_argument('--iteration2', action='store_true',
+                       help='Enable Iteration 2 improvements (temporal smoothing, head pose, fallback)')
     
     args = parser.parse_args()
     
-    # Validate input file
     if not os.path.exists(args.input):
         print(f"Error: Input image not found: {args.input}")
         return
     
-    # Load input image
     print(f"Loading image: {args.input}")
     image = cv2.imread(args.input)
     if image is None:
@@ -64,7 +68,6 @@ def main():
     
     print(f"Image size: {image.shape[1]}x{image.shape[0]}")
     
-    # Load sticker
     print(f"Loading sticker: {args.sticker}")
     try:
         sticker = load_sticker(args.sticker)
@@ -75,7 +78,6 @@ def main():
         print(f"Error loading sticker: {e}")
         return
     
-    # Map position string to enum
     position_map = {
         'forehead': StickerPosition.FOREHEAD,
         'nose': StickerPosition.NOSE,
@@ -88,14 +90,22 @@ def main():
     }
     position = position_map[args.position]
     
-    # Initialize sticker overlay
     print("\nInitializing MediaPipe...")
-    overlay = MediaPipeStickerOverlay(
-        min_detection_confidence=args.min_detection_confidence,
-        min_tracking_confidence=args.min_tracking_confidence
-    )
+    if args.iteration2:
+        print("  Using Iteration 2 improvements (head pose-aware rotation)")
+        overlay = MediaPipeStickerOverlay(
+            min_detection_confidence=args.min_detection_confidence,
+            min_tracking_confidence=args.min_tracking_confidence,
+            enable_temporal_smoothing=False,
+            enable_head_pose=True,
+            enable_confidence_fallback=False
+        )
+    else:
+        overlay = MediaPipeStickerOverlay(
+            min_detection_confidence=args.min_detection_confidence,
+            min_tracking_confidence=args.min_tracking_confidence
+        )
     
-    # Process image
     print(f"Processing image with sticker on {args.position}...")
     try:
         result = overlay.overlay_sticker(
@@ -105,7 +115,6 @@ def main():
             scale=args.scale
         )
         
-        # Save result
         output_dir = os.path.dirname(args.output)
         if output_dir and not os.path.exists(output_dir):
             os.makedirs(output_dir, exist_ok=True)
@@ -120,6 +129,6 @@ def main():
 
 
 if __name__ == "__main__":
-    import numpy as np  # Import here to avoid issues if not needed
+    import numpy as np
     main()
 

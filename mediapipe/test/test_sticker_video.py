@@ -22,7 +22,6 @@ def load_sticker(sticker_path: str):
     if sticker is None:
         raise ValueError(f"Could not load sticker from: {sticker_path}")
     
-    # If no alpha channel, add one
     if sticker.shape[2] == 3:
         alpha = np.ones((sticker.shape[0], sticker.shape[1], 1), 
                        dtype=sticker.dtype) * 255
@@ -80,15 +79,15 @@ Examples:
                        help='Minimum confidence for face tracking (0.0-1.0)')
     parser.add_argument('--codec', type=str, default='mp4v',
                        help='Video codec (default: mp4v, use "XVID" or "H264" for better compatibility)')
+    parser.add_argument('--no-iteration2', action='store_true',
+                       help='Disable Iteration 2 improvements (use Iteration 1 baseline)')
     
     args = parser.parse_args()
     
-    # Validate input file
     if not os.path.exists(args.input):
         print(f"Error: Input video not found: {args.input}")
         return
     
-    # Parse sticker configurations
     stickers = []
     position_map = {
         'forehead': StickerPosition.FOREHEAD,
@@ -108,7 +107,6 @@ Examples:
         parts = sticker_config.split(':')
         sticker_path = parts[0]
         
-        # Parse position, scale, rotation from config string
         position_str = parts[1].lower() if len(parts) > 1 else None
         scale = float(parts[2]) if len(parts) > 2 else args.scale
         rotation = float(parts[3]) if len(parts) > 3 else None
@@ -130,14 +128,12 @@ Examples:
     
     print(f"Loaded {len(stickers)} sticker(s)")
     
-    # Open video
     print(f"\nOpening video: {args.input}")
     cap = cv2.VideoCapture(args.input)
     if not cap.isOpened():
         print(f"Error: Could not open video: {args.input}")
         return
     
-    # Get video properties
     fps = cap.get(cv2.CAP_PROP_FPS)
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
@@ -151,14 +147,31 @@ Examples:
     if args.max_frames:
         print(f"  Processing first {args.max_frames} frames only")
     
-    # Initialize sticker overlay
     print("\nInitializing MediaPipe...")
-    overlay = MediaPipeStickerOverlay(
-        min_detection_confidence=args.min_detection_confidence,
-        min_tracking_confidence=args.min_tracking_confidence
-    )
+    if args.no_iteration2:
+        print("  Using Iteration 1 (baseline, no improvements)")
+        overlay = MediaPipeStickerOverlay(
+            min_detection_confidence=args.min_detection_confidence,
+            min_tracking_confidence=args.min_tracking_confidence,
+            enable_temporal_smoothing=False,
+            enable_head_pose=False,
+            enable_confidence_fallback=False
+        )
+    else:
+        print("  Using Iteration 2 improvements:")
+        print("    - Temporal smoothing")
+        print("    - Head pose-aware rotation")
+        print("    - Confidence-based fallback")
+        overlay = MediaPipeStickerOverlay(
+            min_detection_confidence=args.min_detection_confidence,
+            min_tracking_confidence=args.min_tracking_confidence,
+            enable_temporal_smoothing=True,
+            enable_head_pose=True,
+            enable_confidence_fallback=True
+        )
     
-    # Prepare output video writer
+    overlay.reset_temporal_state()
+    
     output_dir = os.path.dirname(args.output)
     if output_dir and not os.path.exists(output_dir):
         os.makedirs(output_dir, exist_ok=True)
@@ -171,7 +184,6 @@ Examples:
         cap.release()
         return
     
-    # Process frames
     print("\nProcessing frames...")
     frame_count = 0
     processed_count = 0
@@ -191,18 +203,15 @@ Examples:
         
         frame_count += 1
         
-        # Check if we've reached max frames
         if args.max_frames and frame_count > args.max_frames:
             break
         
-        # Process frame with stickers
         try:
             processed_frame = overlay.process_video_frame(frame, stickers)
             out.write(processed_frame)
             processed_count += 1
         except Exception as e:
             print(f"\nError processing frame {frame_count}: {e}")
-            # Write original frame if processing fails
             out.write(frame)
         
         if progress_bar:
@@ -213,7 +222,6 @@ Examples:
     if progress_bar:
         progress_bar.close()
     
-    # Cleanup
     cap.release()
     out.release()
     

@@ -26,15 +26,12 @@ def load_sticker(sticker_path: str) -> np.ndarray:
     if not os.path.exists(sticker_path):
         raise FileNotFoundError(f"Sticker file not found: {sticker_path}")
     
-    # Load with alpha channel if available
     sticker = cv2.imread(sticker_path, cv2.IMREAD_UNCHANGED)
     
     if sticker is None:
         raise ValueError(f"Could not load sticker from: {sticker_path}")
     
-    # If no alpha channel, add one
     if sticker.shape[2] == 3:
-        # Create alpha channel (fully opaque)
         alpha = np.ones((sticker.shape[0], sticker.shape[1], 1), dtype=sticker.dtype) * 255
         sticker = np.concatenate([sticker, alpha], axis=2)
     
@@ -129,7 +126,6 @@ def parse_sticker_config(sticker_configs: List[str]) -> List[Dict]:
         scale = float(parts[2]) if len(parts) > 2 else 1.0
         rotation = float(parts[3]) if len(parts) > 3 else None
         
-        # Map string to StickerPosition enum
         position_map = {
             'forehead': StickerPosition.FOREHEAD,
             'nose': StickerPosition.NOSE,
@@ -192,12 +188,10 @@ Valid positions: forehead, nose, left_cheek, right_cheek, left_eye, right_eye, c
     
     args = parser.parse_args()
     
-    # Validate input file
     if not os.path.exists(args.input):
         print(f"Error: Input video not found: {args.input}")
         return
     
-    # Parse sticker configurations
     try:
         stickers = parse_sticker_config(args.stickers)
         print(f"Loaded {len(stickers)} sticker(s)")
@@ -205,7 +199,6 @@ Valid positions: forehead, nose, left_cheek, right_cheek, left_eye, right_eye, c
         print(f"Error parsing sticker configurations: {e}")
         return
     
-    # Read video
     try:
         frames, fps, width, height = read_video(args.input)
         print(f"Loaded {len(frames)} frames")
@@ -213,13 +206,16 @@ Valid positions: forehead, nose, left_cheek, right_cheek, left_eye, right_eye, c
         print(f"Error reading video: {e}")
         return
     
-    # Initialize sticker overlay
     overlay = MediaPipeStickerOverlay(
         min_detection_confidence=args.min_detection_confidence,
-        min_tracking_confidence=args.min_tracking_confidence
+        min_tracking_confidence=args.min_tracking_confidence,
+        enable_temporal_smoothing=True,
+        enable_head_pose=True,
+        enable_confidence_fallback=True
     )
     
-    # Process frames
+    overlay.reset_temporal_state()
+    
     print("Processing frames with stickers...")
     processed_frames = []
     
@@ -227,9 +223,7 @@ Valid positions: forehead, nose, left_cheek, right_cheek, left_eye, right_eye, c
         processed_frame = overlay.process_video_frame(frame, stickers)
         processed_frames.append(processed_frame)
     
-    # Write output video
     try:
-        # Create output directory if it doesn't exist
         os.makedirs(os.path.dirname(args.output) if os.path.dirname(args.output) else '.', exist_ok=True)
         write_video(processed_frames, args.output, fps, width, height, args.codec)
     except Exception as e:

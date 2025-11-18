@@ -87,6 +87,8 @@ examples/results/
 *.mov
 *.webm
 *.webp
+*.pdf
+report/
 
 # Temporary files
 *.tmp
