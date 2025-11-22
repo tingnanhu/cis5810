@@ -1,0 +1,4 @@
+# This directory stores pipeline results
+# - intermediate/ : Face-swapped videos (before stickers)
+# - final/ : Final videos (with face swap and stickers)
+
